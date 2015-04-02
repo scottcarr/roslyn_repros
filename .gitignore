@@ -1,3 +1,5 @@
 *.suo
-OpenRoslyn\bin\Debug\**
-packages\**
+OpenRoslyn/bin/Debug/**
+packages/**
+OpenRoslyn/obj/**
+.vs/**

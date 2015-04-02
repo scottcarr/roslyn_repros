@@ -10,10 +10,10 @@ using System.Diagnostics;
 
 namespace OpenRoslyn
 {
-  enum ReferenceStatus {OK, MissingMSCorLib, MissingFacades, Broken};
+  enum ReferenceStatus {OK, MissingMSCorLib, MissingFacades45, MissingFacades46, Broken};
   class Program
   {
-#if true
+#if false
     static void Main(string[] args)
     {
 
@@ -41,20 +41,25 @@ namespace OpenRoslyn
       var sln = msbw.OpenSolutionAsync(@"C:\Users\carr27\Documents\GitHub\roslyn\src\RoslynLight.sln").Result;
       foreach(var p in sln.Projects)
       {
-        //if (p.Language == LanguageNames.CSharp)
-        //{
-          FindIfMissingReferences(p);
-        //}
+        if (p.Language == LanguageNames.CSharp)
+        {
+          List<string> why;
+          if (ReferenceStatus.Broken == FindIfMissingReferences(p, out why))
+          {
+            messages.Add(p.FilePath);
+            messages.AddRange(why);
+          }
+        }
       }
       File.WriteAllLines("log.txt", messages);
       Console.WriteLine("done.");
       Console.ReadKey();
     }
 #endif
-    static IEnumerable<MetadataReference> GetFacadeReferences()
+    static IEnumerable<MetadataReference> GetFacadeReferences(string version)
     {
       var refs = new List<MetadataReference>();
-      var facadesDir = @"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.5\Facades\";
+      var facadesDir = String.Format(@"C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\{0}\Facades\", version);
       string[] dlls =
       {
        "System.Collections.dll",
@@ -69,6 +74,7 @@ namespace OpenRoslyn
        "System.Runtime.Extensions.dll",
        "System.Runtime.InteropServices.dll",
        "System.Text.Encoding.dll",
+       "System.Threading.dll",
        "System.Threading.Tasks.dll",
        "System.Xml.ReaderWriter.dll",
       };
@@ -80,9 +86,10 @@ namespace OpenRoslyn
     {
       return MetadataReference.CreateFromAssembly(typeof(object).Assembly);
     }
-    static ReferenceStatus FindIfMissingReferences(Project proj)
+    static ReferenceStatus FindIfMissingReferences(Project proj, out List<string> why)
     {
-      List<string> orig_msg, mscl_msg, facade_msg;
+      List<string> orig_msg, mscl_msg, facade45_msg, facade46_msg;
+      why = new List<string>();
       if (!HasErrors(proj, out orig_msg))
       {
         return ReferenceStatus.OK;
@@ -92,23 +99,33 @@ namespace OpenRoslyn
       {
         return ReferenceStatus.MissingMSCorLib;
       }
-      var projWithFacades = proj.AddMetadataReferences(GetFacadeReferences());
-      if (!HasErrors(projWithFacades, out facade_msg))
+      var projWithFacades45 = proj.AddMetadataReferences(GetFacadeReferences("v4.5"));
+      if (!HasErrors(projWithFacades45, out facade45_msg))
       {
-        return ReferenceStatus.MissingFacades;
+        return ReferenceStatus.MissingFacades45;
       }
-      List<string>[] msgs = { orig_msg, mscl_msg, facade_msg };
+      var projWithFacades46 = proj.AddMetadataReferences(GetFacadeReferences("v4.6"));
+      if (!HasErrors(projWithFacades46, out facade46_msg))
+      {
+        return ReferenceStatus.MissingFacades46;
+      }
+
+      List<string>[] msgs = { orig_msg, mscl_msg, facade45_msg, facade46_msg };
       var lens = msgs.Select(x => x.Count());
       var shortest_len = lens.Min();
       var shortest = msgs.First(x => x.Count() == shortest_len);
+      /*
       if (shortest == orig_msg) { Console.WriteLine("orig: "); }
       if (shortest == mscl_msg) { Console.WriteLine("mscl: "); }
-      if (shortest == facade_msg) { Console.WriteLine("facade: "); }
+      if (shortest == facade45_msg) { Console.WriteLine("facade 4.5: "); }
+      if (shortest == facade46_msg) { Console.WriteLine("facade 4.6: "); }
       foreach (var m in shortest)
       {
         Console.WriteLine(m);
       }
-      Debug.Assert(false, "Couldn't fix project: " + proj.FilePath);
+      */
+      why = shortest;
+      //Debug.Assert(false, "Couldn't fix project: " + proj.FilePath);
       return ReferenceStatus.Broken;
     }
     static bool HasErrors(Project proj, out List<string> why)
